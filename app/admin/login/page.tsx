@@ -1,21 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createBrowserClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      flowType: "pkce",
-    },
-  }
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 export default function LoginPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const finishLogin = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        router.replace("/admin");
+      }
+    };
+
+    finishLogin();
+  }, [router]);
 
   const loginWithGitHub = async () => {
     setLoading(true);
@@ -24,7 +32,7 @@ export default function LoginPage() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/admin`,
+        redirectTo: `${window.location.origin}/admin/login`,
       },
     });
 
@@ -35,9 +43,7 @@ export default function LoginPage() {
       return;
     }
 
-    if (data.url) {
-      window.location.assign(data.url);
-    } else {
+    if (!data.url) {
       setErrorMessage("Could not start GitHub login. Please try again.");
       setLoading(false);
     }
