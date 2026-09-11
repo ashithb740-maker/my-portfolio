@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 const supabase = createBrowserClient(
@@ -13,8 +14,14 @@ const supabase = createBrowserClient(
 );
 
 export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   const loginWithGitHub = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    setLoading(true);
+    setErrorMessage("");
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
         redirectTo: `${window.location.origin}/auth/callback?next=/admin`,
@@ -23,6 +30,16 @@ export default function LoginPage() {
 
     if (error) {
       console.error("GitHub login error:", error);
+      setErrorMessage(error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (data.url) {
+      window.location.assign(data.url);
+    } else {
+      setErrorMessage("Could not start GitHub login. Please try again.");
+      setLoading(false);
     }
   };
 
@@ -38,11 +55,19 @@ export default function LoginPage() {
         </p>
 
         <button
+          type="button"
           onClick={loginWithGitHub}
-          className="mt-8 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800"
+          disabled={loading}
+          className="mt-8 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Continue with GitHub
+          {loading ? "Connecting to GitHub..." : "Continue with GitHub"}
         </button>
+
+        {errorMessage && (
+          <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {errorMessage}
+          </p>
+        )}
       </div>
     </main>
   );
