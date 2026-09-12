@@ -2,23 +2,12 @@
 
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      experimental: {
-        passkey: true,
-      },
-    },
-  }
-);
+import { createClient } from "../../../lib/supabase/client";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -42,7 +31,6 @@ function LoginForm() {
       });
 
       if (error) throw error;
-
       router.replace(destination);
     } catch (error) {
       console.error("Password login error:", error);
@@ -72,33 +60,36 @@ function LoginForm() {
         );
       }
 
-      // Do not run getSession() at the same time as this operation.
-      // WebAuthn/passkey authentication must be allowed to own the browser
-      // credential prompt without another Supabase Auth request competing for
-      // the auth lock.
       const passkeyLogin = supabase.auth.signInWithPasskey();
 
       const timeout = new Promise<never>((_, reject) => {
         window.setTimeout(() => {
           reject(
             new Error(
-              "Biometric verification timed out. Make sure your passkey is registered for ashithb.vercel.app, then try again."
+              "Biometric verification timed out. Check that the passkey is registered for ashithb.vercel.app and try again."
             )
           );
         }, 30000);
       });
 
       const { error } = await Promise.race([passkeyLogin, timeout]);
-
       if (error) throw error;
 
+      // The SSR browser client writes the authenticated session to cookies,
+      // allowing the Next.js middleware to recognize the login.
       router.replace(destination);
     } catch (error) {
       console.error("Passkey login error:", error);
-      const message = error instanceof Error ? error.message : "Face/biometric login failed.";
+      const message =
+        error instanceof Error ? error.message : "Face/biometric login failed.";
 
-      if (message.toLowerCase().includes("cancel") || message.toLowerCase().includes("abort")) {
-        setErrorMessage("Biometric verification was cancelled. Click the button and try again.");
+      if (
+        message.toLowerCase().includes("cancel") ||
+        message.toLowerCase().includes("abort")
+      ) {
+        setErrorMessage(
+          "Biometric verification was cancelled. Click the button and try again."
+        );
       } else {
         setErrorMessage(message);
       }
