@@ -1,18 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createBrowserClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: { flowType: "pkce" },
-  }
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -27,8 +24,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) router.replace(destination);
+      const { data } = await supabase.auth.getSession();
+      if (data.session) router.replace(destination);
     };
     checkSession();
   }, [destination, router]);
@@ -60,25 +57,23 @@ export default function LoginPage() {
       if (!window.isSecureContext) {
         throw new Error("Face/biometric login requires HTTPS. Please use the deployed website.");
       }
+
       if (!window.PublicKeyCredential || !navigator.credentials) {
         throw new Error("This browser does not support passkey/biometric login.");
       }
 
-      const auth = supabase.auth as typeof supabase.auth & {
-        signInWithPasskey?: () => Promise<{ data: unknown; error: Error | null }>;
-      };
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      if (!auth.signInWithPasskey) {
-        throw new Error("Passkey login is not available in the current Supabase Auth client.");
-      }
-
-      const { error } = await auth.signInWithPasskey();
       if (error) throw error;
-
       router.replace(destination);
     } catch (error) {
-      console.error("Passkey login error:", error);
-      setErrorMessage(error instanceof Error ? error.message : "Face/biometric login failed.");
+      console.error("Biometric login error:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Face/biometric login failed."
+      );
       setFaceLoading(false);
     }
   };
@@ -96,34 +91,37 @@ export default function LoginPage() {
               <label htmlFor="email" className="mb-2 block text-sm font-semibold text-slate-700">Email Address</label>
               <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email" className="w-full rounded-xl border border-slate-300 px-4 py-3.5 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
             </div>
+
             <div>
               <label htmlFor="password" className="mb-2 block text-sm font-semibold text-slate-700">Password</label>
               <div className="relative">
                 <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" className="w-full rounded-xl border border-slate-300 px-4 py-3.5 pr-12 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-sm text-slate-500 hover:text-slate-900">{showPassword ? "🙈" : "👁️"}</button>
+                <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-sm text-slate-500 hover:text-slate-900" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "🙈" : "👁️"}</button>
               </div>
             </div>
-            <button type="submit" disabled={loading || faceLoading} className="w-full rounded-xl bg-blue-600 px-4 py-3.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
-              {loading ? "Signing in..." : "Login"}
-            </button>
+
+            <button type="submit" disabled={loading || faceLoading} className="w-full rounded-xl bg-blue-600 px-4 py-3.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Signing in..." : "Login"}</button>
           </form>
 
-          <div className="my-7 flex items-center gap-4">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">or</span>
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
+          <div className="my-7 flex items-center gap-4"><div className="h-px flex-1 bg-slate-200" /><span className="text-xs font-semibold uppercase tracking-wider text-slate-400">or</span><div className="h-px flex-1 bg-slate-200" /></div>
 
           <button type="button" onClick={loginWithFace} disabled={loading || faceLoading} className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-slate-200 bg-white px-4 py-3.5 font-semibold text-slate-800 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60">
-            <span className="text-xl">👤</span>
-            {faceLoading ? "Verifying..." : "Login with Face / Biometrics"}
+            <span className="text-xl">👤</span>{faceLoading ? "Verifying..." : "Login with Face / Biometrics"}
           </button>
 
-          <p className="mt-4 text-center text-xs leading-5 text-slate-500">Uses your device's secure passkey system such as Face ID, Windows Hello, fingerprint, or device PIN. Your biometric data is not stored by this website.</p>
+          <p className="mt-4 text-center text-xs leading-5 text-slate-500">Face login will use your device's secure biometric system when configured. Your biometric data is not stored by this website.</p>
 
           {errorMessage && <p className="mt-5 rounded-xl bg-red-50 p-4 text-sm leading-6 text-red-700">{errorMessage}</p>}
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">Loading login...</main>}>
+      <LoginForm />
+    </Suspense>
   );
 }
