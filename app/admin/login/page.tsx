@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
@@ -30,34 +30,32 @@ function LoginForm() {
   const destination =
     next && next.startsWith("/") && !next.startsWith("//") ? next : "/admin";
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) router.replace(destination);
-    };
-    checkSession();
-  }, [destination, router]);
-
   const loginWithPassword = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      setErrorMessage(error.message);
+      if (error) throw error;
+
+      router.replace(destination);
+    } catch (error) {
+      console.error("Password login error:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Login failed."
+      );
       setLoading(false);
-      return;
     }
-
-    router.replace(destination);
   };
 
   const loginWithFace = async () => {
+    if (faceLoading || loading) return;
+
     setFaceLoading(true);
     setErrorMessage("");
 
@@ -74,18 +72,37 @@ function LoginForm() {
         );
       }
 
-      const { error } = await supabase.auth.signInWithPasskey();
+      // Do not run getSession() at the same time as this operation.
+      // WebAuthn/passkey authentication must be allowed to own the browser
+      // credential prompt without another Supabase Auth request competing for
+      // the auth lock.
+      const passkeyLogin = supabase.auth.signInWithPasskey();
+
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => {
+          reject(
+            new Error(
+              "Biometric verification timed out. Make sure your passkey is registered for ashithb.vercel.app, then try again."
+            )
+          );
+        }, 30000);
+      });
+
+      const { error } = await Promise.race([passkeyLogin, timeout]);
 
       if (error) throw error;
 
       router.replace(destination);
     } catch (error) {
       console.error("Passkey login error:", error);
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Face/biometric login failed."
-      );
+      const message = error instanceof Error ? error.message : "Face/biometric login failed.";
+
+      if (message.toLowerCase().includes("cancel") || message.toLowerCase().includes("abort")) {
+        setErrorMessage("Biometric verification was cancelled. Click the button and try again.");
+      } else {
+        setErrorMessage(message);
+      }
+
       setFaceLoading(false);
     }
   };
@@ -177,7 +194,9 @@ function LoginForm() {
             className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-slate-200 bg-white px-4 py-3.5 font-semibold text-slate-800 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span className="text-xl">🔐</span>
-            {faceLoading ? "Waiting for biometric verification..." : "Login with Face / Biometrics"}
+            {faceLoading
+              ? "Waiting for biometric verification..."
+              : "Login with Face / Biometrics"}
           </button>
 
           <p className="mt-4 text-center text-xs leading-5 text-slate-500">
