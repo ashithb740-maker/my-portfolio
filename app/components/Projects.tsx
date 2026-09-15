@@ -42,53 +42,14 @@ export default function Projects() {
   }, []);
 
   /*
-   * The portfolio page already contains the original Certifications section.
-   * This enhancement keeps that section and connects it to certificate images
-   * uploaded from the admin dashboard without replacing the existing design.
+   * Connect the existing Certifications section to certificate images
+   * uploaded from the admin dashboard. The observer is used because the
+   * certification cards are rendered asynchronously after Supabase loads.
    */
   useEffect(() => {
+    let cancelled = false;
+
     const enhanceCertifications = async () => {
-      const textElements = Array.from(
-        document.querySelectorAll<HTMLElement>("p, h2, h3, h4")
-      );
-
-      const heading = textElements.find(
-        (element) => element.textContent?.trim() === "Certifications"
-      );
-
-      if (!heading) return;
-
-      const section =
-        heading.closest<HTMLElement>("div.mt-20") ||
-        heading.parentElement?.parentElement?.parentElement;
-
-      if (!section) return;
-
-      section.id = "certifications";
-
-      // Restore Certifications in the existing desktop navigation.
-      const navLinks = document.querySelector<HTMLElement>("header nav > div");
-
-      if (
-        navLinks &&
-        !navLinks.querySelector('a[href="#certifications"]')
-      ) {
-        const link = document.createElement("a");
-        link.href = "#certifications";
-        link.textContent = "Certifications";
-        link.className = "transition hover:text-blue-600";
-
-        const achievementsLink = navLinks.querySelector(
-          'a[href="#achievements"]'
-        );
-
-        if (achievementsLink) {
-          navLinks.insertBefore(link, achievementsLink);
-        } else {
-          navLinks.appendChild(link);
-        }
-      }
-
       const { data, error } = await supabase
         .from("certifications")
         .select("id, title, image_url");
@@ -98,75 +59,157 @@ export default function Projects() {
         return;
       }
 
+      if (cancelled) return;
+
       const certifications = (data || []) as CertificationMedia[];
 
-      certifications.forEach((certificate) => {
-        if (!certificate.image_url || !certificate.title) return;
-
-        const title = certificate.title.trim();
-
-        const titleElement = Array.from(
-          section.querySelectorAll<HTMLElement>("h3, h4, p, span")
-        ).find((element) => element.textContent?.trim() === title);
-
-        if (!titleElement) return;
-
-        const card = titleElement.closest<HTMLElement>(
-          "div.rounded-3xl"
+      const applyEnhancements = () => {
+        // Restore Certifications in the existing desktop navigation.
+        const textElements = Array.from(
+          document.querySelectorAll<HTMLElement>("p, h2, h3, h4")
         );
 
-        if (!card || card.dataset.certificateEnhanced === "true") return;
-
-        card.dataset.certificateEnhanced = "true";
-
-        const imageWrapper = document.createElement("div");
-        imageWrapper.className =
-          "mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50";
-
-        const image = document.createElement("img");
-        image.src = certificate.image_url;
-        image.alt = `${title} certificate`;
-        image.loading = "lazy";
-        image.className =
-          "h-64 w-full cursor-pointer object-contain bg-white p-2 transition duration-300 hover:scale-[1.02]";
-
-        imageWrapper.appendChild(image);
-
-        const firstButtonOrLink = card.querySelector("a, button");
-
-        if (firstButtonOrLink) {
-          card.insertBefore(imageWrapper, firstButtonOrLink);
-        } else {
-          card.appendChild(imageWrapper);
-        }
-
-        // Make the existing View Certificate button open the uploaded image.
-        const certificateLink = Array.from(
-          card.querySelectorAll<HTMLAnchorElement>("a")
-        ).find((anchor) =>
-          anchor.textContent?.toLowerCase().includes("view certificate")
+        const heading = textElements.find(
+          (element) => element.textContent?.trim() === "Certifications"
         );
 
-        if (certificateLink) {
-          certificateLink.href = certificate.image_url;
-          certificateLink.target = "_blank";
-          certificateLink.rel = "noopener noreferrer";
-        } else {
-          const viewLink = document.createElement("a");
-          viewLink.href = certificate.image_url;
-          viewLink.target = "_blank";
-          viewLink.rel = "noopener noreferrer";
-          viewLink.textContent = "View Certificate ↗";
-          viewLink.className =
-            "mt-6 block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-blue-700";
-          card.appendChild(viewLink);
+        let section: HTMLElement | null = null;
+
+        if (heading) {
+          section =
+            heading.closest<HTMLElement>("div.mt-20") ||
+            heading.parentElement?.parentElement?.parentElement ||
+            null;
+
+          if (section) {
+            section.id = "certifications";
+          }
         }
+
+        const navLinks = document.querySelector<HTMLElement>("header nav > div");
+
+        if (
+          navLinks &&
+          !navLinks.querySelector('a[href="#certifications"]')
+        ) {
+          const link = document.createElement("a");
+          link.href = "#certifications";
+          link.textContent = "Certifications";
+          link.className = "transition hover:text-blue-600";
+
+          const achievementsLink = navLinks.querySelector(
+            'a[href="#achievements"]'
+          );
+
+          if (achievementsLink) {
+            navLinks.insertBefore(link, achievementsLink);
+          } else {
+            navLinks.appendChild(link);
+          }
+        }
+
+        certifications.forEach((certificate) => {
+          if (!certificate.image_url || !certificate.title) return;
+
+          const title = certificate.title.trim();
+          if (!title) return;
+
+          // Search the whole page so this still works when the section is
+          // rendered after this component's first effect execution.
+          const titleElement = Array.from(
+            document.querySelectorAll<HTMLElement>("h3, h4, p, span")
+          ).find((element) => element.textContent?.trim() === title);
+
+          if (!titleElement) return;
+
+          const card = titleElement.closest<HTMLElement>("div.rounded-3xl");
+          if (!card) return;
+
+          // Always replace the old certificate_url (for example "bvvg")
+          // with the actual uploaded Supabase Storage image URL.
+          const certificateLinks = Array.from(
+            card.querySelectorAll<HTMLAnchorElement>("a")
+          ).filter((anchor) =>
+            anchor.textContent?.toLowerCase().includes("view certificate")
+          );
+
+          certificateLinks.forEach((certificateLink) => {
+            certificateLink.href = certificate.image_url!;
+            certificateLink.target = "_blank";
+            certificateLink.rel = "noopener noreferrer";
+          });
+
+          // Add the uploaded certificate image only once.
+          if (card.dataset.certificateImageEnhanced !== "true") {
+            const imageWrapper = document.createElement("div");
+            imageWrapper.className =
+              "mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50";
+
+            const image = document.createElement("img");
+            image.src = certificate.image_url;
+            image.alt = `${title} certificate`;
+            image.loading = "lazy";
+            image.className =
+              "h-64 w-full cursor-pointer object-contain bg-white p-2 transition duration-300 hover:scale-[1.02]";
+
+            imageWrapper.appendChild(image);
+
+            const firstButtonOrLink = card.querySelector("a, button");
+
+            if (firstButtonOrLink) {
+              card.insertBefore(imageWrapper, firstButtonOrLink);
+            } else {
+              card.appendChild(imageWrapper);
+            }
+
+            card.dataset.certificateImageEnhanced = "true";
+          }
+
+          // If the original button was not present when the card first
+          // appeared, create a correct View Certificate link.
+          const hasCertificateLink = Array.from(
+            card.querySelectorAll<HTMLAnchorElement>("a")
+          ).some((anchor) =>
+            anchor.textContent?.toLowerCase().includes("view certificate")
+          );
+
+          if (!hasCertificateLink) {
+            const viewLink = document.createElement("a");
+            viewLink.href = certificate.image_url;
+            viewLink.target = "_blank";
+            viewLink.rel = "noopener noreferrer";
+            viewLink.textContent = "View Certificate ↗";
+            viewLink.className =
+              "mt-6 block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-blue-700";
+            card.appendChild(viewLink);
+          }
+        });
+      };
+
+      applyEnhancements();
+
+      const observer = new MutationObserver(() => {
+        applyEnhancements();
       });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+
+      return observer;
     };
 
-    const timer = window.setTimeout(enhanceCertifications, 250);
+    let observer: MutationObserver | undefined;
 
-    return () => window.clearTimeout(timer);
+    enhanceCertifications().then((createdObserver) => {
+      observer = createdObserver;
+    });
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+    };
   }, []);
 
   return (
