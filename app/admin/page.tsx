@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
+const STORAGE_BUCKET = "portfolio-media";
 
 type Section = {
   key: string;
@@ -99,6 +100,10 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [authError, setAuthError] = useState("");
+  const [projectImages, setProjectImages] = useState<File[]>([]);
+  const [projectImageUrls, setProjectImageUrls] = useState<string[]>([]);
+  const [certificateImage, setCertificateImage] = useState<File | null>(null);
+  const [certificateImageUrl, setCertificateImageUrl] = useState("");
 
   const active = useMemo(
     () => sections.find((section) => section.key === activeKey) ?? sections[0],
@@ -123,23 +128,18 @@ export default function AdminPage() {
     const start = async () => {
       setLoading(true);
       setAuthError("");
-
       const timeout = new Promise<never>((_, reject) =>
         window.setTimeout(() => reject(new Error("Authentication check timed out.")), 10000)
       );
 
       try {
-        // getSession reads the browser client's stored session and avoids the
-        // network wait that was leaving the old admin page on "Loading...".
         const result = await Promise.race([supabase.auth.getSession(), timeout]);
         if (!alive) return;
-
         const session = result.data.session;
         if (!session?.user) {
           router.replace("/admin/login");
           return;
         }
-
         setUserEmail(session.user.email ?? "");
         await Promise.all(sections.map(loadSection));
       } catch (error) {
@@ -155,26 +155,51 @@ export default function AdminPage() {
     return () => { alive = false; };
   }, [router]);
 
+  const resetImages = () => {
+    setProjectImages([]);
+    setProjectImageUrls([]);
+    setCertificateImage(null);
+    setCertificateImageUrl("");
+  };
+
   const switchSection = (section: Section) => {
     setActiveKey(section.key);
     setValues(emptyValues(section));
     setEditingId(null);
+    resetImages();
     setMessage("");
   };
 
   const editRow = (row: Record<string, unknown>) => {
     setEditingId(Number(row.id));
-    setValues(
-      Object.fromEntries(
-        active.fields.map((field) => [field.key, String(row[field.key] ?? "")])
-      )
-    );
+    setValues(Object.fromEntries(active.fields.map((field) => [field.key, String(row[field.key] ?? "")] )));
+    if (active.key === "projects") {
+      setProjectImageUrls(Array.isArray(row.image_urls) ? row.image_urls.map(String) : []);
+      setProjectImages([]);
+    } else if (active.key === "certifications") {
+      setCertificateImageUrl(String(row.image_url ?? ""));
+      setCertificateImage(null);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const clearForm = () => {
     setEditingId(null);
     setValues(emptyValues(active));
+    resetImages();
+  };
+
+  const uploadFile = async (file: File, folder: string) => {
+    const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+    const path = `${folder}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: false,
+    });
+    if (error) throw new Error(`Image upload failed: ${error.message}`);
+    const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
   };
 
   const save = async (event: React.FormEvent) => {
@@ -188,22 +213,45 @@ export default function AdminPage() {
 
     setSaving(true);
     setMessage("");
-    const payload = Object.fromEntries(active.fields.map((field) => [field.key, values[field.key]?.trim() ?? ""]));
 
-    const result = editingId === null
-      ? await supabase.from(active.table).insert(payload)
-      : await supabase.from(active.table).update(payload).eq("id", editingId);
+    try {
+      const payload: Record<string, unknown> = Object.fromEntries(
+        active.fields.map((field) => [field.key, values[field.key]?.trim() ?? ""])
+      );
 
-    if (result.error) {
-      setMessage(`Error: ${result.error.message}`);
+      if (active.key === "projects" && projectImages.length > 0) {
+        setMessage("Uploading project screenshots... 📸");
+        const uploaded = [];
+        for (const file of projectImages) uploaded.push(await uploadFile(file, "projects"));
+        payload.image_urls = [...projectImageUrls, ...uploaded];
+      } else if (active.key === "projects") {
+        payload.image_urls = projectImageUrls;
+      }
+
+      if (active.key === "certifications") {
+        if (certificateImage) {
+          setMessage("Uploading certificate image... 📜");
+          payload.image_url = await uploadFile(certificateImage, "certificates");
+        } else {
+          payload.image_url = certificateImageUrl || null;
+        }
+      }
+
+      const result = editingId === null
+        ? await supabase.from(active.table).insert(payload)
+        : await supabase.from(active.table).update(payload).eq("id", editingId);
+
+      if (result.error) throw new Error(result.error.message);
+
+      setMessage(editingId === null ? `${active.label} added successfully! 🎉` : `${active.label} updated successfully! ✏️`);
+      clearForm();
+      await loadSection(active);
+    } catch (error) {
+      console.error("Admin save error:", error);
+      setMessage(`Error: ${error instanceof Error ? error.message : "Unable to save."}`);
+    } finally {
       setSaving(false);
-      return;
     }
-
-    setMessage(editingId === null ? `${active.label} added successfully! 🎉` : `${active.label} updated successfully! ✏️`);
-    clearForm();
-    await loadSection(active);
-    setSaving(false);
   };
 
   const remove = async (id: number) => {
@@ -220,6 +268,10 @@ export default function AdminPage() {
   const logout = async () => {
     await supabase.auth.signOut();
     router.replace("/admin/login");
+  };
+
+  const removeProjectImage = (index: number) => {
+    setProjectImageUrls((urls) => urls.filter((_, i) => i !== index));
   };
 
   if (loading) {
@@ -278,7 +330,7 @@ export default function AdminPage() {
                   <p className="text-sm font-semibold text-blue-600">{active.icon} {active.label}</p>
                   <h2 className="mt-1 text-2xl font-bold">{editingId === null ? `Add ${active.label}` : `Edit ${active.label}`}</h2>
                 </div>
-                {editingId !== null && <button onClick={clearForm} className="rounded-xl bg-slate-200 px-4 py-2 font-semibold">Cancel</button>}
+                {editingId !== null && <button type="button" onClick={clearForm} className="rounded-xl bg-slate-200 px-4 py-2 font-semibold">Cancel</button>}
               </div>
 
               <form onSubmit={save} className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -296,6 +348,59 @@ export default function AdminPage() {
                     )}
                   </label>
                 ))}
+
+                {active.key === "projects" && (
+                  <div className="sm:col-span-2 rounded-2xl border border-dashed border-blue-300 bg-blue-50 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-slate-900">📸 Project Screenshots</p>
+                        <p className="mt-1 text-sm text-slate-600">Select multiple images. They will upload automatically when you save.</p>
+                      </div>
+                      <label className="cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">
+                        + Upload Screenshots
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setProjectImages(Array.from(e.target.files ?? []))} />
+                      </label>
+                    </div>
+                    {(projectImages.length > 0 || projectImageUrls.length > 0) && (
+                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {projectImageUrls.map((url, index) => (
+                          <div key={url} className="relative overflow-hidden rounded-xl border bg-white">
+                            <img src={url} alt={`Project screenshot ${index + 1}`} className="h-28 w-full object-cover" />
+                            <button type="button" onClick={() => removeProjectImage(index)} className="absolute right-1.5 top-1.5 rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">✕</button>
+                          </div>
+                        ))}
+                        {projectImages.map((file) => (
+                          <div key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-xl border bg-white">
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="h-28 w-full object-cover" />
+                            <p className="truncate px-2 py-1 text-xs text-slate-600">{file.name}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {active.key === "certifications" && (
+                  <div className="sm:col-span-2 rounded-2xl border border-dashed border-violet-300 bg-violet-50 p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-bold text-slate-900">📜 Certificate Image</p>
+                        <p className="mt-1 text-sm text-slate-600">Upload the certificate image directly from your computer.</p>
+                      </div>
+                      <label className="cursor-pointer rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700">
+                        + Upload Certificate
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => setCertificateImage(e.target.files?.[0] ?? null)} />
+                      </label>
+                    </div>
+                    {(certificateImage || certificateImageUrl) && (
+                      <div className="mt-4 max-w-sm overflow-hidden rounded-xl border bg-white">
+                        <img src={certificateImage ? URL.createObjectURL(certificateImage) : certificateImageUrl} alt="Certificate preview" className="max-h-64 w-full object-contain" />
+                        <button type="button" onClick={() => { setCertificateImage(null); setCertificateImageUrl(""); }} className="w-full border-t px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Remove image</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <button disabled={saving} type="submit" className="sm:col-span-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                   {saving ? "Saving..." : editingId === null ? `Add ${active.label}` : `Update ${active.label}`}
                 </button>
@@ -313,6 +418,14 @@ export default function AdminPage() {
                       {active.fields.slice(1).map((field) => row[field.key] ? (
                         <p key={field.key} className="mt-2 text-sm text-slate-400"><span className="font-semibold text-slate-300">{field.label}:</span> {String(row[field.key])}</p>
                       ) : null)}
+                      {active.key === "projects" && Array.isArray(row.image_urls) && row.image_urls.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {row.image_urls.map((url, index) => <img key={String(url)} src={String(url)} alt={`Screenshot ${index + 1}`} className="h-16 w-24 rounded-lg object-cover" />)}
+                        </div>
+                      )}
+                      {active.key === "certifications" && row.image_url && (
+                        <img src={String(row.image_url)} alt="Certificate" className="mt-4 h-20 max-w-32 rounded-lg object-contain bg-white" />
+                      )}
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <button onClick={() => editRow(row)} className="rounded-lg bg-slate-700 px-4 py-2 font-semibold hover:bg-slate-600">Edit</button>
