@@ -124,14 +124,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     let alive = true;
-
     const start = async () => {
       setLoading(true);
       setAuthError("");
       const timeout = new Promise<never>((_, reject) =>
         window.setTimeout(() => reject(new Error("Authentication check timed out.")), 10000)
       );
-
       try {
         const result = await Promise.race([supabase.auth.getSession(), timeout]);
         if (!alive) return;
@@ -150,7 +148,6 @@ export default function AdminPage() {
         if (alive) setLoading(false);
       }
     };
-
     start();
     return () => { alive = false; };
   }, [router]);
@@ -177,7 +174,7 @@ export default function AdminPage() {
       setProjectImageUrls(Array.isArray(row.image_urls) ? row.image_urls.map(String) : []);
       setProjectImages([]);
     } else if (active.key === "certifications") {
-      setCertificateImageUrl(String(row.image_url ?? ""));
+      setCertificateImageUrl(typeof row.image_url === "string" ? row.image_url : "");
       setCertificateImage(null);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -210,24 +207,20 @@ export default function AdminPage() {
         return;
       }
     }
-
     setSaving(true);
     setMessage("");
-
     try {
       const payload: Record<string, unknown> = Object.fromEntries(
         active.fields.map((field) => [field.key, values[field.key]?.trim() ?? ""])
       );
-
       if (active.key === "projects" && projectImages.length > 0) {
         setMessage("Uploading project screenshots... 📸");
-        const uploaded = [];
+        const uploaded: string[] = [];
         for (const file of projectImages) uploaded.push(await uploadFile(file, "projects"));
         payload.image_urls = [...projectImageUrls, ...uploaded];
       } else if (active.key === "projects") {
         payload.image_urls = projectImageUrls;
       }
-
       if (active.key === "certifications") {
         if (certificateImage) {
           setMessage("Uploading certificate image... 📜");
@@ -236,13 +229,10 @@ export default function AdminPage() {
           payload.image_url = certificateImageUrl || null;
         }
       }
-
       const result = editingId === null
         ? await supabase.from(active.table).insert(payload)
         : await supabase.from(active.table).update(payload).eq("id", editingId);
-
       if (result.error) throw new Error(result.error.message);
-
       setMessage(editingId === null ? `${active.label} added successfully! 🎉` : `${active.label} updated successfully! ✏️`);
       clearForm();
       await loadSection(active);
@@ -392,7 +382,7 @@ export default function AdminPage() {
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => setCertificateImage(e.target.files?.[0] ?? null)} />
                       </label>
                     </div>
-                    {(certificateImage || certificateImageUrl) && (
+                    {(certificateImage || certificateImageUrl.length > 0) && (
                       <div className="mt-4 max-w-sm overflow-hidden rounded-xl border bg-white">
                         <img src={certificateImage ? URL.createObjectURL(certificateImage) : certificateImageUrl} alt="Certificate preview" className="max-h-64 w-full object-contain" />
                         <button type="button" onClick={() => { setCertificateImage(null); setCertificateImageUrl(""); }} className="w-full border-t px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Remove image</button>
@@ -423,8 +413,8 @@ export default function AdminPage() {
                           {row.image_urls.map((url, index) => <img key={String(url)} src={String(url)} alt={`Screenshot ${index + 1}`} className="h-16 w-24 rounded-lg object-cover" />)}
                         </div>
                       )}
-                      {active.key === "certifications" && row.image_url && (
-                        <img src={String(row.image_url)} alt="Certificate" className="mt-4 h-20 max-w-32 rounded-lg object-contain bg-white" />
+                      {active.key === "certifications" && typeof row.image_url === "string" && row.image_url.length > 0 && (
+                        <img src={row.image_url} alt="Certificate" className="mt-4 h-20 max-w-32 rounded-lg object-contain bg-white" />
                       )}
                     </div>
                     <div className="flex shrink-0 gap-2">
