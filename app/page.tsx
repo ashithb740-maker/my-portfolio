@@ -39,27 +39,11 @@ type Certification = {
   description?: string;
 };
 
-type Achievement = {
-  id: string;
-  title?: string;
-  description?: string;
-  date?: string;
-};
-
 type Internship = {
   id: string;
   title?: string;
   company?: string;
   duration?: string;
-  date?: string;
-  description?: string;
-  certificate_url?: string;
-};
-
-type Course = {
-  id: string;
-  title?: string;
-  provider?: string;
   date?: string;
   description?: string;
   certificate_url?: string;
@@ -77,9 +61,7 @@ type Skill = {
 export default function Home() {
   const [education, setEducation] = useState<Education[]>([]);
   const [certifications, setCertifications] = useState<Certification[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [internships, setInternships] = useState<Internship[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
 
   // ================= LOAD DATA =================
@@ -140,24 +122,6 @@ export default function Home() {
         setCertifications(certificationData ?? []);
       }
 
-      // ================= ACHIEVEMENTS =================
-
-      const {
-        data: achievementData,
-        error: achievementError,
-      } = await supabase
-        .from("achievements")
-        .select("*")
-        .order("id", { ascending: true });
-
-      if (achievementError) {
-        console.warn(
-          "Could not load achievements:",
-          achievementError.message
-        );
-      } else {
-        setAchievements(achievementData ?? []);
-      }
 
       // ================= INTERNSHIPS =================
 
@@ -178,24 +142,6 @@ export default function Home() {
         setInternships(internshipData ?? []);
       }
 
-      // ================= COURSES =================
-
-      const {
-        data: courseData,
-        error: courseError,
-      } = await supabase
-        .from("courses")
-        .select("*")
-        .order("id", { ascending: true });
-
-      if (courseError) {
-        console.warn(
-          "Could not load courses:",
-          courseError.message
-        );
-      } else {
-        setCourses(courseData ?? []);
-      }
     };
 
     loadPortfolioData();
@@ -249,12 +195,6 @@ export default function Home() {
               Education
             </a>
 
-            <a
-              href="#achievements"
-              className="transition hover:text-blue-600"
-            >
-              Achievements
-            </a>
 
             <a
               href="#internships"
@@ -263,9 +203,6 @@ export default function Home() {
               Internships
             </a>
 
-            <a href="#courses" className="transition hover:text-blue-600">
-              Courses
-            </a>
 
             <a href="#projects" className="transition hover:text-blue-600">
               Projects
@@ -601,67 +538,14 @@ export default function Home() {
 
       </section>
 
-      {/* ================= ACHIEVEMENTS ================= */}
+      {/* ================= CERTIFICATIONS ================= */}
 
       <section
-        id="achievements"
+        id="certifications"
         className="bg-white px-6 py-24 lg:px-8"
       >
 
         <div className="mx-auto max-w-7xl">
-
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">
-            Achievements
-          </p>
-
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            My achievements
-          </h2>
-
-          {achievements.length > 0 ? (
-
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-
-              {achievements.map((item) => (
-
-                <div
-                  key={item.id}
-                  className="rounded-3xl border border-slate-200 bg-slate-50 p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
-
-                  <div className="text-3xl">
-                    🏆
-                  </div>
-
-                  <h3 className="mt-5 text-xl font-bold text-slate-950">
-                    {item.title}
-                  </h3>
-
-                  {item.description && (
-                    <p className="mt-3 leading-7 text-slate-600">
-                      {item.description}
-                    </p>
-                  )}
-
-                  {item.date && (
-                    <p className="mt-4 text-sm text-slate-500">
-                      {item.date}
-                    </p>
-                  )}
-
-                </div>
-
-              ))}
-
-            </div>
-
-          ) : (
-
-            <p className="mt-10 text-slate-500">
-              Achievements will be added soon.
-            </p>
-
-          )}
 
           {/* ================= CERTIFICATIONS ================= */}
 
@@ -672,7 +556,7 @@ export default function Home() {
             </p>
 
             <h3 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
-              Courses & credentials
+              Certificates & credentials
             </h3>
 
             {certifications.length > 0 ? (
@@ -745,7 +629,6 @@ export default function Home() {
 
             )}
 
-          </div>
 
         </div>
 
@@ -832,89 +715,6 @@ export default function Home() {
 
             <p className="mt-10 text-slate-500">
               Internships will be added soon.
-            </p>
-
-          )}
-
-        </div>
-
-      </section>
-
-      {/* ================= COURSES ================= */}
-
-      <section
-        id="courses"
-        className="px-6 py-24 lg:px-8"
-      >
-
-        <div className="mx-auto max-w-7xl">
-
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">
-            Courses
-          </p>
-
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            Additional learning
-          </h2>
-
-          {courses.length > 0 ? (
-
-            <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-
-              {courses.map((item) => (
-
-                <div
-                  key={item.id}
-                  className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-                >
-
-                  <div className="text-3xl">
-                    📚
-                  </div>
-
-                  <h3 className="mt-5 text-xl font-bold text-slate-950">
-                    {item.title}
-                  </h3>
-
-                  {item.provider && (
-                    <p className="mt-2 font-medium text-blue-600">
-                      {item.provider}
-                    </p>
-                  )}
-
-                  {item.date && (
-                    <p className="mt-2 text-sm text-slate-500">
-                      {item.date}
-                    </p>
-                  )}
-
-                  {item.description && (
-                    <p className="mt-4 leading-7 text-slate-600">
-                      {item.description}
-                    </p>
-                  )}
-
-                  {item.certificate_url && (
-                    <a
-                      href={item.certificate_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-6 inline-block rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold transition hover:border-blue-600 hover:text-blue-600"
-                    >
-                      View Certificate
-                    </a>
-                  )}
-
-                </div>
-
-              ))}
-
-            </div>
-
-          ) : (
-
-            <p className="mt-10 text-slate-500">
-              Courses will be added soon.
             </p>
 
           )}
