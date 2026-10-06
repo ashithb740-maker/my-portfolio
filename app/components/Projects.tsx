@@ -268,10 +268,29 @@ export default function Projects() {
                 key={project.id}
                 className="group flex flex-col rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl"
               >
-                {/* Icon */}
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl">
-                  💻
-                </div>
+                {/* Project Logo */}
+                {(() => {
+                  const normalizedTitle = project.title.toLowerCase();
+                  const logo = normalizedTitle.includes("blue ai")
+                    ? "/projects/blue-ai.jpg"
+                    : normalizedTitle.includes("portfolio")
+                      ? "/projects/portfolio-ab.jpg"
+                      : null;
+
+                  return logo ? (
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-slate-50">
+                      <img
+                        src={logo}
+                        alt={`${project.title} logo`}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl">
+                      💻
+                    </div>
+                  );
+                })()}
 
                 {/* Title */}
                 <h3 className="mt-6 text-2xl font-bold text-slate-950">
